@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import posixpath
+import shutil
 
 import six
 
@@ -145,9 +146,22 @@ def ensure_packages(config, filedir, jsondir):
             links.update(name_links)
             versions.update(name_versions)
 
+    try:
+        with open(os.path.join(jsondir, 'config.json')) as f:
+            prev_config = json.load(f)
+    except Exception:
+        prev_config = None
+
+    if prev_config != config:
+        logger.info('Configuration changed, rebuilding JSON')
+        shutil.rmtree(jsondir)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as exe:
         futures = list(iter_ensure_package_files(
             exe, config, links, versions, filedir, jsondir,
         ))
         for future in concurrent.futures.as_completed(futures):
             future.result()
+
+    with open(os.path.join(jsondir, 'config.json'), 'w') as f:
+        json.dump(config, f)
