@@ -18,3 +18,5 @@ tests = "pytest -v tests"
 draft = "towncrier --draft"
 changelog = "towncrier"
 build = "setup.py sdist bdist_wheel"
+
+serve = 'python -c "from pytest_pypi_gateway.servers import serve; serve()"'

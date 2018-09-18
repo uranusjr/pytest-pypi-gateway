@@ -31,7 +31,7 @@ class SimplePageParser(six.moves.html_parser.HTMLParser):
                 if key.lower() == 'href':
                     url, qs = six.moves.urllib.parse.urldefrag(value)
                     hsh = six.moves.urllib.parse.parse_qs(qs)['sha256'][0]
-                    self._current = (url, hsh)
+                    self._current = (url, 'sha256', hsh)
 
     def handle_data(self, data):
         if self._current is not None:
@@ -61,15 +61,15 @@ def get_info(name):
     return parser.links, versions
 
 
-def get_file_hash(filename):
-    sha256 = hashlib.sha256()
+def get_file_hash(htype, filename):
+    h = hashlib.new(htype)
     with open(filename, 'rb') as f:
         while True:
             data = f.read(65535)
             if not data:
                 break
-            sha256.update(data)
-    return 'sha256', sha256.hexdigest()
+            h.update(data)
+    return h.hexdigest()
 
 
 def mkdir_p(name):
@@ -81,11 +81,11 @@ def mkdir_p(name):
             raise
 
 
-def ensure_file(url, hsh, spec, filedir):
+def ensure_file(url, htype, hvalue, spec, filedir):
     filename = os.path.join(filedir, spec)
     if os.path.exists(filename):
-        _, digest = get_file_hash(filename)
-        if digest == hsh:
+        digest = get_file_hash(htype, filename)
+        if digest == hvalue:
             logger.info('Skipping {}'.format(filename))
             return
         logger.warn('Replacing {}'.format(filename))
@@ -107,7 +107,9 @@ def ensure_json(name, version, specs, jsondir):
     data = {
         'info': pypi_data['info'],
         'urls': [
-            entry for entry in pypi_data['urls']
+            # The URL entry needs to be regenerated at runtime.
+            {k: v for k, v in entry.items() if k != 'url'}
+            for entry in pypi_data['urls']
             if entry['filename'] in specs
         ],
     }
@@ -120,11 +122,11 @@ def iter_ensure_package_files(exe, config, links, versions, filedir, jsondir):
     for name, specs in config.items():
         for spec in specs:
             try:
-                url, hsh = links[spec]
+                url, htype, hvalue = links[spec]
             except KeyError:
                 logger.warn('Failed to find link for {}'.format(spec))
                 continue
-            yield exe.submit(ensure_file, url, hsh, spec, filedir)
+            yield exe.submit(ensure_file, url, htype, hvalue, spec, filedir)
             try:
                 version = versions[spec]
             except KeyError:
